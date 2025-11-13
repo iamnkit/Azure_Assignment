@@ -1,0 +1,36 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-test-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Build and push images
+        run: |
+          az acr login --name ${{ secrets.ACR_NAME }}
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest ./services/user-service
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/user-service:latest
+
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/order-service:latest ./services/order-service
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/order-service:latest
+
+          docker build -t ${{ secrets.ACR_NAME }}.azurecr.io/api-gateway:latest ./services/api-gateway
+          docker push ${{ secrets.ACR_NAME }}.azurecr.io/api-gateway:latest
+
+      - name: Deploy to AKS
+        run: |
+          az aks get-credentials --resource-group ${{ secrets.AZURE_RG }} --name ${{ secrets.AKS_CLUSTER }}
+          kubectl apply -f services/user-service/k8s/
+          kubectl apply -f services/order-service/k8s/
+          kubectl apply -f services/api-gateway/k8s/
